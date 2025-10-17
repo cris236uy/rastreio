@@ -1,40 +1,87 @@
 import streamlit as st
-from PIL import Image
 import pandas as pd
 import plotly.express as px
 
 st.set_page_config(page_title="Controle de Estoque - Facilities", layout="wide")
-st.title("📦 Sistema de Controle de Estoque Interativo")
+st.title("📦 Sistema de Controle de Estoque por Setor")
 
-# Upload da imagem do estoque
-arquivo = st.file_uploader("Envie uma foto do estoque", type=["jpg", "png"])
-if arquivo:
-    imagem = Image.open(arquivo)
-    st.image(imagem, caption="Imagem do Estoque", use_column_width=True)
+# Lista de setores
+setores = [
+    "COI", "LOGISTICA", "EMPACOTAMENTO", "FÁBRICA", "BALANÇA",
+    "AMBULATÓRIO", "EXTRAÇÃO", "EMPACOTAMENTO FEM", "VESTIARIO",
+    "CORPORATIVO I", "CORPORATIVO 2", "FACILITIES"
+]
 
-    st.subheader("Digite a quantidade de cada item detectado:")
-    # Formulário para inserir quantidades
-    with st.form("quantidades_estoque"):
-        papel = st.number_input("Papel", min_value=0, value=0)
-        copos = st.number_input("Copos", min_value=0, value=0)
-        produto_limpeza = st.number_input("Produto de Limpeza", min_value=0, value=0)
-        submitted = st.form_submit_button("Atualizar Estoque")
+# Lista de materiais
+materiais = [
+    "Papel higiênico (pacote c/ 8 unidade)",
+    "Papel Toalha (pacote c/ 8 unidade)",
+    "Sab. Erva doce 5 LT",
+    "Saco para lixo preto 100 L",
+    "Saco para lixo preto 40 L",
+    "Saco para lixo preto 60 L",
+    "Saco para lixo (300 L)",
+    "Saco Azul (60 L)",
+    "Saco Azul 100L",
+    "Saco Azul 300 L",
+    "Saco Vermelho 60 L",
+    "Saco Vermelho 100L",
+    "Saco Vermelho 300 L",
+    "Saco Cinza 60 L",
+    "Saco Cinza 100L",
+    "Saco Cinza 300 L",
+    "Saco Marrom 60 L",
+    "Saco Marrom 100L",
+    "Saco Marrom 300 L",
+    "Saco Amarelo 100L",
+    "Saco Amarelo 300 L",
+    "Saco Laranja 100 L",
+    "Saco Laranja 300 L",
+    "Saco Verde 60 L",
+    "Saco Verde 100 L",
+    "Saco Verde 300 L",
+    "Detergente",
+    "Pedra Sanitária",
+    "Copo 180 ML (2,5 mil/cx)",
+    "ALCOOL GEL INOD BACT 800ML",
+    "Sab. Bactericida 800 ML",
+    "Querosene",
+    "Saco para lixo (200 L)",
+    "Alvejante",
+    "Saponaceo",
+    "Esponja dupla face",
+    "Desodorizador ar / 360ml",
+    "Pano p/ pia"
+]
+
+# Seleção do setor
+setor_selecionado = st.selectbox("Selecione o setor que fará a requisição:", setores)
+
+st.subheader(f"Registrar requisição para o setor: {setor_selecionado}")
+
+# Formulário de quantidades
+with st.form("form_requisicao"):
+    quantidades = {}
+    for item in materiais:
+        quantidades[item] = st.number_input(item, min_value=0, value=0)
+    submitted = st.form_submit_button("Registrar Requisição")
+    
+    if submitted:
+        df = pd.DataFrame({
+            "Setor": [setor_selecionado]*len(materiais),
+            "Material": list(quantidades.keys()),
+            "Quantidade": list(quantidades.values())
+        })
         
-        if submitted:
-            # Criar DataFrame com os dados
-            dados_estoque = {
-                "Item": ["Papel", "Copos", "Produto de Limpeza"],
-                "Quantidade": [papel, copos, produto_limpeza]
-            }
-            df = pd.DataFrame(dados_estoque)
-
-            # Exibir gráfico interativo
-            fig = px.bar(df, x="Item", y="Quantidade", color="Item",
-                         title="📊 Estoque de Insumos", text="Quantidade")
-            fig.update_layout(yaxis_title="Quantidade", xaxis_title="Itens")
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Gerar relatório em Excel
-            arquivo_saida = "estoque_relatorio.xlsx"
-            df.to_excel(arquivo_saida, index=False)
-            st.success(f"✅ Relatório gerado: {arquivo_saida}")
+        st.success("✅ Requisição registrada com sucesso!")
+        
+        # Exibir gráfico interativo
+        fig = px.bar(df[df["Quantidade"] > 0], x="Material", y="Quantidade", color="Material",
+                     title=f"Requisição do setor {setor_selecionado}", text="Quantidade")
+        fig.update_layout(xaxis_tickangle=-45, yaxis_title="Quantidade", xaxis_title="Materiais")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Salvar relatório Excel
+        arquivo_excel = f"requisicao_{setor_selecionado}.xlsx"
+        df.to_excel(arquivo_excel, index=False)
+        st.success(f"Relatório gerado: {arquivo_excel}")
