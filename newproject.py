@@ -1,39 +1,40 @@
 import streamlit as st
 from PIL import Image
 import pandas as pd
-import os
+import plotly.express as px
 
 st.set_page_config(page_title="Controle de Estoque - Facilities", layout="wide")
-st.title("📦 Sistema de Controle de Estoque")
+st.title("📦 Sistema de Controle de Estoque Interativo")
 
-# --- Função para detectar itens na imagem ---
-def detectar_itens(imagem):
-    # Aqui você pode integrar um modelo real de detecção
-    # Por enquanto, simulamos resultados
-    itens_detectados = {
-        "Papel": 10,
-        "Copos": 20,
-        "Produto de Limpeza": 5
-    }
-    return itens_detectados
-
-# --- Função para gerar relatório ---
-def gerar_relatorio_estoque(lista_itens, arquivo_saida="estoque_relatorio.xlsx"):
-    df = pd.DataFrame(lista_itens)
-    df.to_excel(arquivo_saida, index=False)
-    st.success(f"✅ Relatório gerado: {arquivo_saida}")
-
-# --- Upload da imagem ---
+# Upload da imagem do estoque
 arquivo = st.file_uploader("Envie uma foto do estoque", type=["jpg", "png"])
 if arquivo:
     imagem = Image.open(arquivo)
-    st.image(imagem, caption="Imagem enviada", use_column_width=True)
+    st.image(imagem, caption="Imagem do Estoque", use_column_width=True)
 
-    # Detectar itens
-    itens = detectar_itens(arquivo)
-    st.subheader("Itens detectados:")
-    st.json(itens)
+    st.subheader("Digite a quantidade de cada item detectado:")
+    # Formulário para inserir quantidades
+    with st.form("quantidades_estoque"):
+        papel = st.number_input("Papel", min_value=0, value=0)
+        copos = st.number_input("Copos", min_value=0, value=0)
+        produto_limpeza = st.number_input("Produto de Limpeza", min_value=0, value=0)
+        submitted = st.form_submit_button("Atualizar Estoque")
+        
+        if submitted:
+            # Criar DataFrame com os dados
+            dados_estoque = {
+                "Item": ["Papel", "Copos", "Produto de Limpeza"],
+                "Quantidade": [papel, copos, produto_limpeza]
+            }
+            df = pd.DataFrame(dados_estoque)
 
-    # Botão para gerar relatório
-    if st.button("Gerar relatório"):
-        gerar_relatorio_estoque([itens])
+            # Exibir gráfico interativo
+            fig = px.bar(df, x="Item", y="Quantidade", color="Item",
+                         title="📊 Estoque de Insumos", text="Quantidade")
+            fig.update_layout(yaxis_title="Quantidade", xaxis_title="Itens")
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Gerar relatório em Excel
+            arquivo_saida = "estoque_relatorio.xlsx"
+            df.to_excel(arquivo_saida, index=False)
+            st.success(f"✅ Relatório gerado: {arquivo_saida}")
