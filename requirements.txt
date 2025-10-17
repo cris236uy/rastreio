@@ -2,6 +2,8 @@ streamlit
 pillow
 pandas
 openpyxl
+plotly
+
 
 
 
