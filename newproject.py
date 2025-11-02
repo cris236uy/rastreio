@@ -1,87 +1,203 @@
+# app_lider_ultimate.py
 import streamlit as st
+import sqlite3
+from datetime import datetime, timedelta
 import pandas as pd
-import plotly.express as px
+import random
 
-st.set_page_config(page_title="Controle de Estoque - Facilities", layout="wide")
-st.title("📦 Sistema de Controle de Estoque por Setor")
+# -------------------------------
+# Configuração da página
+# -------------------------------
+st.set_page_config(page_title="Painel do Líder Ultimate", layout="wide")
+st.title("🚀 Painel do Líder Ultimate - Evolução Pessoal e Profissional")
 
-# Lista de setores
-setores = [
-    "COI", "LOGISTICA", "EMPACOTAMENTO", "FÁBRICA", "BALANÇA",
-    "AMBULATÓRIO", "EXTRAÇÃO", "EMPACOTAMENTO FEM", "VESTIARIO",
-    "CORPORATIVO I", "CORPORATIVO 2", "FACILITIES"
+# -------------------------------
+# Frases motivacionais
+# -------------------------------
+frases = [
+    "O sucesso é feito de pequenas ações consistentes.",
+    "Coragem não é ausência de medo, é agir apesar dele.",
+    "Ideias valem ouro quando você age sobre elas.",
+    "Grandes líderes inspiram pelo exemplo.",
+    "Cada desafio é uma oportunidade disfarçada."
 ]
+st.info(random.choice(frases))
 
-# Lista de materiais
-materiais = [
-    "Papel higiênico (pacote c/ 8 unidade)",
-    "Papel Toalha (pacote c/ 8 unidade)",
-    "Sab. Erva doce 5 LT",
-    "Saco para lixo preto 100 L",
-    "Saco para lixo preto 40 L",
-    "Saco para lixo preto 60 L",
-    "Saco para lixo (300 L)",
-    "Saco Azul (60 L)",
-    "Saco Azul 100L",
-    "Saco Azul 300 L",
-    "Saco Vermelho 60 L",
-    "Saco Vermelho 100L",
-    "Saco Vermelho 300 L",
-    "Saco Cinza 60 L",
-    "Saco Cinza 100L",
-    "Saco Cinza 300 L",
-    "Saco Marrom 60 L",
-    "Saco Marrom 100L",
-    "Saco Marrom 300 L",
-    "Saco Amarelo 100L",
-    "Saco Amarelo 300 L",
-    "Saco Laranja 100 L",
-    "Saco Laranja 300 L",
-    "Saco Verde 60 L",
-    "Saco Verde 100 L",
-    "Saco Verde 300 L",
-    "Detergente",
-    "Pedra Sanitária",
-    "Copo 180 ML (2,5 mil/cx)",
-    "ALCOOL GEL INOD BACT 800ML",
-    "Sab. Bactericida 800 ML",
-    "Querosene",
-    "Saco para lixo (200 L)",
-    "Alvejante",
-    "Saponaceo",
-    "Esponja dupla face",
-    "Desodorizador ar / 360ml",
-    "Pano p/ pia"
-]
+# -------------------------------
+# Conexão com banco de dados
+# -------------------------------
+conn = sqlite3.connect("diario_lider_ultimate.db")
+c = conn.cursor()
 
-# Seleção do setor
-setor_selecionado = st.selectbox("Selecione o setor que fará a requisição:", setores)
+# Criar tabelas se não existirem
+c.execute('''
+    CREATE TABLE IF NOT EXISTS diario (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data TEXT,
+        ideia TEXT,
+        feito TEXT,
+        aprendizado TEXT
+    )
+''')
 
-st.subheader(f"Registrar requisição para o setor: {setor_selecionado}")
+c.execute('''
+    CREATE TABLE IF NOT EXISTS projetos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT,
+        progresso REAL,
+        notas TEXT
+    )
+''')
 
-# Formulário de quantidades
-with st.form("form_requisicao"):
-    quantidades = {}
-    for item in materiais:
-        quantidades[item] = st.number_input(item, min_value=0, value=0)
-    submitted = st.form_submit_button("Registrar Requisição")
+c.execute('''
+    CREATE TABLE IF NOT EXISTS desafios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT,
+        status TEXT,
+        reflexao TEXT
+    )
+''')
+
+conn.commit()
+
+# -------------------------------
+# Funções auxiliares
+# -------------------------------
+def adicionar_diario(data, ideia, feito, aprendizado):
+    c.execute("INSERT INTO diario (data, ideia, feito, aprendizado) VALUES (?, ?, ?, ?)",
+              (data, ideia, feito, aprendizado))
+    conn.commit()
+
+def adicionar_projeto(nome, progresso, notas):
+    c.execute("INSERT INTO projetos (nome, progresso, notas) VALUES (?, ?, ?)",
+              (nome, progresso, notas))
+    conn.commit()
+
+def adicionar_desafio(descricao, status, reflexao):
+    c.execute("INSERT INTO desafios (descricao, status, reflexao) VALUES (?, ?, ?)",
+              (descricao, status, reflexao))
+    conn.commit()
+
+def calcular_pontos():
+    di = c.execute("SELECT COUNT(*) FROM diario").fetchone()[0]
+    de = c.execute("SELECT COUNT(*) FROM desafios WHERE status='Concluído'").fetchone()[0]
+    pr_total = c.execute("SELECT SUM(progresso)/100 FROM projetos").fetchone()[0] or 0
+    return di*10 + de*20 + int(pr_total*50)
+
+# -------------------------------
+# Menu lateral
+# -------------------------------
+menu = ["Dashboard", "Diário do Líder", "Mini-Projeto 1%", "Desafio de Exposição"]
+choice = st.sidebar.selectbox("Navegar", menu)
+
+# -------------------------------
+# Tela: Diário do Líder
+# -------------------------------
+if choice == "Diário do Líder":
+    st.header("📝 Diário do Líder")
+    data = datetime.now().strftime("%Y-%m-%d")
+    ideia = st.text_area("💡 Ideia do dia")
+    feito = st.text_area("🔥 O que fiz bem hoje")
+    aprendizado = st.text_area("📚 Aprendizado / Observação")
     
-    if submitted:
-        df = pd.DataFrame({
-            "Setor": [setor_selecionado]*len(materiais),
-            "Material": list(quantidades.keys()),
-            "Quantidade": list(quantidades.values())
-        })
-        
-        st.success("✅ Requisição registrada com sucesso!")
-        
-        # Exibir gráfico interativo
-        fig = px.bar(df[df["Quantidade"] > 0], x="Material", y="Quantidade", color="Material",
-                     title=f"Requisição do setor {setor_selecionado}", text="Quantidade")
-        fig.update_layout(xaxis_tickangle=-45, yaxis_title="Quantidade", xaxis_title="Materiais")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Salvar relatório Excel
-        arquivo_excel = f"requisicao_{setor_selecionado}.xlsx"
-        df.to_excel(arquivo_excel, index=False)
-        st.success(f"Relatório gerado: {arquivo_excel}")
+    if st.button("Salvar Diário"):
+        if ideia or feito or aprendizado:
+            adicionar_diario(data, ideia, feito, aprendizado)
+            st.success("Diário registrado!")
+        else:
+            st.warning("Preencha ao menos um campo.")
+
+    st.subheader("📖 Histórico")
+    df_diario = pd.read_sql("SELECT * FROM diario ORDER BY id DESC", conn)
+    st.dataframe(df_diario)
+
+# -------------------------------
+# Tela: Mini-Projeto 1%
+# -------------------------------
+elif choice == "Mini-Projeto 1%":
+    st.header("💼 Mini-Projeto 1%")
+    nome = st.text_input("Nome do Projeto")
+    progresso = st.slider("Progresso (%)", 0, 100, 0)
+    notas = st.text_area("Notas / Próximo passo")
+    
+    if st.button("Salvar Projeto"):
+        if nome:
+            adicionar_projeto(nome, progresso, notas)
+            st.success("Projeto salvo!")
+        else:
+            st.warning("Informe o nome do projeto.")
+
+    st.subheader("📊 Projetos")
+    df_projetos = pd.read_sql("SELECT * FROM projetos ORDER BY id DESC", conn)
+    if not df_projetos.empty:
+        st.bar_chart(df_projetos.set_index('nome')['progresso'])
+    st.dataframe(df_projetos)
+
+# -------------------------------
+# Tela: Desafio de Exposição
+# -------------------------------
+elif choice == "Desafio de Exposição":
+    st.header("⚡ Desafio de Exposição")
+    descricao = st.text_area("Descrição")
+    status = st.selectbox("Status", ["Não iniciado", "Em progresso", "Concluído"])
+    reflexao = st.text_area("Reflexão pós-desafio")
+    
+    if st.button("Salvar Desafio"):
+        if descricao:
+            adicionar_desafio(descricao, status, reflexao)
+            st.success("Desafio salvo!")
+        else:
+            st.warning("Informe a descrição.")
+
+    st.subheader("📊 Desafios")
+    df_desafios = pd.read_sql("SELECT * FROM desafios ORDER BY id DESC", conn)
+    st.dataframe(df_desafios)
+    if not df_desafios.empty:
+        st.bar_chart(df_desafios['status'].value_counts())
+
+# -------------------------------
+# Tela: Dashboard Ultimate
+# -------------------------------
+elif choice == "Dashboard":
+    st.header("📈 Painel de Evolução")
+    
+    pontos = calcular_pontos()
+    st.metric("🏆 Pontos Totais", pontos)
+    
+    # Evolução de diários
+    total_diarios = c.execute("SELECT COUNT(*) FROM diario").fetchone()[0]
+    st.metric("Diários Registrados", total_diarios)
+    
+    # Evolução de projetos
+    df_projetos = pd.read_sql("SELECT * FROM projetos", conn)
+    progresso_medio = round(df_projetos["progresso"].mean(), 2) if not df_projetos.empty else 0
+    st.metric("Progresso Médio Projetos (%)", progresso_medio)
+    
+    # Desafios concluídos
+    df_desafios = pd.read_sql("SELECT * FROM desafios", conn)
+    concluidos = df_desafios[df_desafios["status"]=="Concluído"].shape[0] if not df_desafios.empty else 0
+    st.metric("Desafios Concluídos", concluidos)
+    
+    # Gráficos interativos
+    st.subheader("📊 Gráficos de Evolução")
+    if not df_diario.empty:
+        diario_plot = pd.read_sql("SELECT data, id FROM diario", conn)
+        diario_plot['data'] = pd.to_datetime(diario_plot['data'])
+        st.line_chart(diario_plot.set_index('data')['id'])
+    
+    if not df_projetos.empty:
+        st.bar_chart(df_projetos.set_index('nome')['progresso'])
+    
+    if not df_desafios.empty:
+        st.bar_chart(df_desafios['status'].value_counts())
+    
+    st.markdown("---")
+    st.subheader("💡 Próximas Ações")
+    st.write("- Registrar o Diário do Líder diariamente")
+    st.write("- Atualizar mini-projeto 1%")
+    st.write("- Concluir pelo menos 1 desafio de exposição por semana")
+    st.success("🔥 Continue consistente! Cada ação te transforma em líder real.")
+
+st.sidebar.markdown("---")
+st.sidebar.info("💡 Dica: Cada ação diária vale pontos. Acumule, registre e visualize sua evolução!")
+
