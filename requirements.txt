@@ -1,27 +1,13 @@
-# Bibliotecas principais do app
 streamlit
 pandas
-
-# Bibliotecas comuns de suporte a dados e gráficos
 numpy
-matplotlib
 altair
-python-dateutil
-pyyaml
-watchdog
-
-# Manipulação de banco de dados (caso seja necessário)
-sqlalchemy
-
-# Suporte a gráficos interativos e visualização
+matplotlib
 plotly
 seaborn
-
-# Bibliotecas utilitárias comuns
+python-dateutil
+watchdog
+sqlalchemy
+pyyaml
 requests
 tabulate
-
-# Banco embutido e funções do Python (apenas para referência)
-sqlite3
-datetime
-random
