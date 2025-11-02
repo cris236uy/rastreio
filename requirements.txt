@@ -1,11 +1,7 @@
 streamlit
-pillow
 pandas
-openpyxl
+numpy
 plotly
-sqlite3
-datetime 
-random
-
+altair
 
 
