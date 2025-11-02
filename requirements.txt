@@ -1,7 +1,14 @@
+# Bibliotecas principais
 streamlit
 pandas
-sqlite3    
-datetime 
-random   
-Plotly
-Altair
+
+# Suporte a dados e gráficos (opcional – mas comum em apps Streamlit/Pandas)
+numpy
+matplotlib
+altair
+python-dateutil
+
+# Incluídas por clareza (embutidas no Python, não precisam ser instaladas)
+sqlite3
+datetime
+random
