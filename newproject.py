@@ -1,213 +1,196 @@
-# app_lider_ultimate_final.py
 import streamlit as st
-import sqlite3
-from datetime import datetime
 import pandas as pd
+import sqlite3
 import random
+from datetime import datetime
+import plotly.express as px
 
-# -------------------------------
-# Configuração da página
-# -------------------------------
-st.set_page_config(page_title="Painel do Líder Ultimate", layout="wide")
-st.title("🚀 Painel do Líder Ultimate - Evolução Pessoal e Profissional")
+# --- Banco de Dados ---
+def init_db():
+    conn = sqlite3.connect("diario_lider.db")
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS diarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo TEXT NOT NULL,
+            texto TEXT,
+            data TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS projetos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo TEXT NOT NULL,
+            descricao TEXT,
+            status TEXT,
+            data TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS desafios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo TEXT NOT NULL,
+            descricao TEXT,
+            status TEXT,
+            data TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-# -------------------------------
-# Frases motivacionais
-# -------------------------------
+init_db()
+
+# --- Funções CRUD ---
+def add_registro(tabela, titulo, texto="", status="Em andamento"):
+    conn = sqlite3.connect("diario_lider.db")
+    c = conn.cursor()
+    data = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if tabela == "diarios":
+        c.execute("INSERT INTO diarios (titulo, texto, data) VALUES (?, ?, ?)", (titulo, texto, data))
+    else:
+        c.execute(f"INSERT INTO {tabela} (titulo, descricao, status, data) VALUES (?, ?, ?, ?)",
+                  (titulo, texto, status, data))
+    conn.commit()
+    conn.close()
+
+def get_registros(tabela):
+    conn = sqlite3.connect("diario_lider.db")
+    df = pd.read_sql_query(f"SELECT * FROM {tabela}", conn)
+    conn.close()
+    return df
+
+def update_registro(tabela, id, titulo, texto="", status=None):
+    conn = sqlite3.connect("diario_lider.db")
+    c = conn.cursor()
+    if tabela == "diarios":
+        c.execute("UPDATE diarios SET titulo = ?, texto = ? WHERE id = ?", (titulo, texto, id))
+    else:
+        c.execute(f"UPDATE {tabela} SET titulo = ?, descricao = ?, status = ? WHERE id = ?",
+                  (titulo, texto, status, id))
+    conn.commit()
+    conn.close()
+
+def delete_registro(tabela, id):
+    conn = sqlite3.connect("diario_lider.db")
+    c = conn.cursor()
+    c.execute(f"DELETE FROM {tabela} WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+
+# --- Frases motivacionais ---
 frases = [
-    "O sucesso é feito de pequenas ações consistentes.",
-    "Coragem não é ausência de medo, é agir apesar dele.",
-    "Ideias valem ouro quando você age sobre elas.",
-    "Grandes líderes inspiram pelo exemplo.",
-    "Cada desafio é uma oportunidade disfarçada."
+    "🚀 Todo líder já começou com a primeira pequena coragem.",
+    "🔥 Grandes ideias nascem de mentes que não têm medo de falhar.",
+    "⏳ O tempo passa, mas a sua evolução só depende de você.",
+    "💡 Uma ideia por dia te separa da mediocridade.",
+    "🧠 Quem aprende, lidera. Quem lidera, transforma."
 ]
-st.info(random.choice(frases))
 
-# -------------------------------
-# Conexão com banco de dados
-# -------------------------------
-conn = sqlite3.connect("diario_lider_ultimate.db")
-c = conn.cursor()
+st.markdown(f"""
+<div style='padding: 20px; background-color: #f5f5f5; border-radius: 10px; text-align: center;'>
+    <h2 style='color: #ff6600;'>Diário do Líder • Cresça, Inspire, Evolua</h2>
+    <p style='font-size: 18px; color: #333;'>{random.choice(frases)}</p>
+</div>
+""", unsafe_allow_html=True)
 
-# Criar tabelas se não existirem
-c.execute('''
-    CREATE TABLE IF NOT EXISTS diario (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        data TEXT,
-        ideia TEXT,
-        feito TEXT,
-        aprendizado TEXT
-    )
-''')
-c.execute('''
-    CREATE TABLE IF NOT EXISTS projetos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT,
-        progresso REAL,
-        notas TEXT
-    )
-''')
-c.execute('''
-    CREATE TABLE IF NOT EXISTS desafios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        descricao TEXT,
-        status TEXT,
-        reflexao TEXT
-    )
-''')
-conn.commit()
+# --- Menu ---
+menu = st.sidebar.selectbox("Menu", ["📊 Dashboard", "📖 Diário", "💼 Mini Projetos", "⚡ Desafios", "🎛️ Gerenciar Registros"])
 
-# -------------------------------
-# Funções auxiliares
-# -------------------------------
-def adicionar_diario(data, ideia, feito, aprendizado):
-    c.execute("INSERT INTO diario (data, ideia, feito, aprendizado) VALUES (?, ?, ?, ?)",
-              (data, ideia, feito, aprendizado))
-    conn.commit()
-
-def adicionar_projeto(nome, progresso, notas):
-    c.execute("INSERT INTO projetos (nome, progresso, notas) VALUES (?, ?, ?)",
-              (nome, progresso, notas))
-    conn.commit()
-
-def adicionar_desafio(descricao, status, reflexao):
-    c.execute("INSERT INTO desafios (descricao, status, reflexao) VALUES (?, ?, ?)",
-              (descricao, status, reflexao))
-    conn.commit()
-
-def calcular_pontos():
-    di = c.execute("SELECT COUNT(*) FROM diario").fetchone()[0]
-    de = c.execute("SELECT COUNT(*) FROM desafios WHERE status='Concluído'").fetchone()[0]
-    pr_total = c.execute("SELECT SUM(progresso)/100 FROM projetos").fetchone()[0] or 0
-    return di*10 + de*20 + int(pr_total*50)
-
-# -------------------------------
-# Menu lateral
-# -------------------------------
-menu = ["Dashboard", "Diário do Líder", "Mini-Projeto 1%", "Desafio de Exposição"]
-choice = st.sidebar.selectbox("Navegar", menu)
-
-# -------------------------------
-# Tela: Diário do Líder
-# -------------------------------
-if choice == "Diário do Líder":
-    st.header("📝 Diário do Líder")
-    data = datetime.now().strftime("%Y-%m-%d")
-    ideia = st.text_area("💡 Ideia do dia")
-    feito = st.text_area("🔥 O que fiz bem hoje")
-    aprendizado = st.text_area("📚 Aprendizado / Observação")
-    
-    if st.button("Salvar Diário"):
-        if ideia or feito or aprendizado:
-            adicionar_diario(data, ideia, feito, aprendizado)
-            st.success("Diário registrado!")
+# --- Função de formulário de adição ---
+def formulario_adicionar(tabela, titulo_placeholder, texto_placeholder, status_opcional=False):
+    st.subheader(f"Adicionar {tabela.capitalize()}")
+    titulo = st.text_input("Título", placeholder=titulo_placeholder)
+    texto = st.text_area("Descrição / Texto", placeholder=texto_placeholder)
+    status = "Em andamento"
+    if status_opcional:
+        status = st.selectbox("Status", ["Em andamento", "Concluído", "Pausado"])
+    if st.button(f"Adicionar {tabela.capitalize()}"):
+        if titulo:
+            add_registro(tabela, titulo, texto, status)
+            st.success(f"{tabela.capitalize()} adicionada com sucesso!")
         else:
-            st.warning("Preencha ao menos um campo.")
+            st.error("O título é obrigatório!")
 
-    st.subheader("📖 Histórico")
-    df_diario = pd.read_sql("SELECT * FROM diario ORDER BY id DESC", conn)
-    if not df_diario.empty:
-        st.dataframe(df_diario)
-    else:
-        st.info("Nenhum diário registrado ainda.")
+# --- Função para colorir status ---
+def cor_status(status):
+    cores = {"Em andamento": "#3498db", "Concluído": "#2ecc71", "Pausado": "#e67e22"}
+    return cores.get(status, "#95a5a6")
 
-# -------------------------------
-# Tela: Mini-Projeto 1%
-# -------------------------------
-elif choice == "Mini-Projeto 1%":
-    st.header("💼 Mini-Projeto 1%")
-    nome = st.text_input("Nome do Projeto")
-    progresso = st.slider("Progresso (%)", 0, 100, 0)
-    notas = st.text_area("Notas / Próximo passo")
+# --- Dashboard ---
+if menu == "📊 Dashboard":
+    st.subheader("📈 Resumo do Progresso")
     
-    if st.button("Salvar Projeto"):
-        if nome:
-            adicionar_projeto(nome, progresso, notas)
-            st.success("Projeto salvo!")
-        else:
-            st.warning("Informe o nome do projeto.")
-
-    st.subheader("📊 Projetos")
-    df_projetos = pd.read_sql("SELECT * FROM projetos ORDER BY id DESC", conn)
-    if not df_projetos.empty:
-        st.bar_chart(df_projetos.set_index('nome')['progresso'])
-        st.dataframe(df_projetos)
-    else:
-        st.info("Nenhum projeto registrado ainda.")
-
-# -------------------------------
-# Tela: Desafio de Exposição
-# -------------------------------
-elif choice == "Desafio de Exposição":
-    st.header("⚡ Desafio de Exposição")
-    descricao = st.text_area("Descrição")
-    status = st.selectbox("Status", ["Não iniciado", "Em progresso", "Concluído"])
-    reflexao = st.text_area("Reflexão pós-desafio")
+    diarios = get_registros("diarios")
+    projetos = get_registros("projetos")
+    desafios = get_registros("desafios")
     
-    if st.button("Salvar Desafio"):
-        if descricao:
-            adicionar_desafio(descricao, status, reflexao)
-            st.success("Desafio salvo!")
-        else:
-            st.warning("Informe a descrição.")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Diários", len(diarios))
+    col2.metric("Projetos", len(projetos))
+    col3.metric("Desafios", len(desafios))
+    
+    # Gráfico de status de projetos
+    if not projetos.empty:
+        df_proj_status = projetos['status'].value_counts().reset_index()
+        df_proj_status.columns = ['Status','Quantidade']
+        fig_proj = px.pie(df_proj_status, names='Status', values='Quantidade', title="Status dos Projetos",
+                          color='Status', color_discrete_map={"Em andamento":"#3498db","Concluído":"#2ecc71","Pausado":"#e67e22"})
+        st.plotly_chart(fig_proj)
+    
+    # Gráfico de status de desafios
+    if not desafios.empty:
+        df_desaf_status = desafios['status'].value_counts().reset_index()
+        df_desaf_status.columns = ['Status','Quantidade']
+        fig_desaf = px.pie(df_desaf_status, names='Status', values='Quantidade', title="Status dos Desafios",
+                          color='Status', color_discrete_map={"Em andamento":"#3498db","Concluído":"#2ecc71","Pausado":"#e67e22"})
+        st.plotly_chart(fig_desaf)
 
-    st.subheader("📊 Desafios")
-    df_desafios = pd.read_sql("SELECT * FROM desafios ORDER BY id DESC", conn)
-    if not df_desafios.empty:
-        st.bar_chart(df_desafios['status'].value_counts())
-        st.dataframe(df_desafios)
-    else:
-        st.info("Nenhum desafio registrado ainda.")
+# --- Telas de cadastro ---
+elif menu == "📖 Diário":
+    formulario_adicionar("diarios", "Meu primeiro insight", "Escreva aqui seus pensamentos e aprendizados...")
 
-# -------------------------------
-# Tela: Dashboard Ultimate
-# -------------------------------
-elif choice == "Dashboard":
-    st.header("📈 Painel de Evolução")
+elif menu == "💼 Mini Projetos":
+    formulario_adicionar("projetos", "Projeto Exemplo", "Descreva seu mini projeto...", status_opcional=True)
 
-    # Carregar todos os dados
-    df_diario = pd.read_sql("SELECT * FROM diario ORDER BY id DESC", conn)
-    df_projetos = pd.read_sql("SELECT * FROM projetos ORDER BY id DESC", conn)
-    df_desafios = pd.read_sql("SELECT * FROM desafios ORDER BY id DESC", conn)
+elif menu == "⚡ Desafios":
+    formulario_adicionar("desafios", "Desafio Exemplo", "Descreva o desafio...", status_opcional=True)
 
-    # Pontos totais
-    pontos = calcular_pontos()
-    st.metric("🏆 Pontos Totais", pontos)
+# --- Gerenciar registros com cards ---
+elif menu == "🎛️ Gerenciar Registros":
+    st.subheader("Gerenciar registros")
+    abas = st.tabs(["📖 Diários", "💼 Mini Projetos", "⚡ Desafios"])
+    tabelas = ["diarios", "projetos", "desafios"]
 
-    # Métricas
-    st.metric("📖 Diários Registrados", len(df_diario))
-    progresso_medio = round(df_projetos["progresso"].mean(), 2) if not df_projetos.empty else 0
-    st.metric("💼 Progresso Médio Projetos (%)", progresso_medio)
-    concluidos = df_desafios[df_desafios["status"]=="Concluído"].shape[0] if not df_desafios.empty else 0
-    st.metric("⚡ Desafios Concluídos", concluidos)
+    for i, tabela in enumerate(tabelas):
+        with abas[i]:
+            df = get_registros(tabela)
+            if df.empty:
+                st.warning(f"Nenhum registro em {tabela}.")
+            else:
+                for index, row in df.iterrows():
+                    cor = "#f5f5f5" if tabela=="diarios" else cor_status(row["status"])
+                    st.markdown(f"""
+                    <div style='padding:15px; margin-bottom:10px; background-color:{cor}; border-radius:10px;'>
+                        <h4>{row['titulo']}</h4>
+                        <p>{row['texto'] if tabela=='diarios' else row['descricao']}</p>
+                        <p>Status: <b>{row['status'] if tabela!='diarios' else '—'}</b></p>
+                        <p><i>Cadastrado em: {row['data']}</i></p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    # Gráficos de evolução
-    st.subheader("📊 Gráficos de Evolução")
-    if not df_diario.empty:
-        diario_plot = df_diario.copy()
-        diario_plot['data'] = pd.to_datetime(diario_plot['data'])
-        diario_grouped = diario_plot.groupby('data').count()['id']
-        st.line_chart(diario_grouped)
-    else:
-        st.info("Nenhum diário registrado ainda.")
-
-    if not df_projetos.empty:
-        st.bar_chart(df_projetos.set_index('nome')['progresso'])
-    else:
-        st.info("Nenhum projeto registrado ainda.")
-
-    if not df_desafios.empty:
-        st.bar_chart(df_desafios['status'].value_counts())
-    else:
-        st.info("Nenhum desafio registrado ainda.")
-
-    # Próximas ações
-    st.markdown("---")
-    st.subheader("💡 Próximas Ações")
-    st.write("- Registrar o Diário do Líder diariamente")
-    st.write("- Atualizar mini-projeto 1%")
-    st.write("- Concluir pelo menos 1 desafio de exposição por semana")
-    st.success("🔥 Continue consistente! Cada ação te transforma em líder real.")
-
-st.sidebar.markdown("---")
-st.sidebar.info("💡 Dica: Cada ação diária vale pontos. Acumule, registre e visualize sua evolução!")
+                    # Edição
+                    new_titulo = st.text_input(f"Título ({row['id']})", row["titulo"], key=f"titulo{row['id']}")
+                    new_texto = st.text_area(f"Texto/Descrição ({row['id']})", row["texto"] if tabela=="diarios" else row["descricao"], key=f"text{row['id']}")
+                    new_status = None
+                    if tabela != "diarios":
+                        new_status = st.selectbox(f"Status ({row['id']})", ["Em andamento","Concluído","Pausado"], index=["Em andamento","Concluído","Pausado"].index(row["status"]), key=f"status{row['id']}")
+                    
+                    col1, col2 = st.columns([1,1])
+                    with col1:
+                        if st.button(f"Salvar alterações ({row['id']})"):
+                            update_registro(tabela, row['id'], new_titulo, new_texto, new_status)
+                            st.success("Registro atualizado!")
+                    with col2:
+                        if st.button(f"Excluir ({row['id']})"):
+                            delete_registro(tabela, row['id'])
+                            st.warning("Registro excluído!")
