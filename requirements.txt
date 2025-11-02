@@ -3,3 +3,5 @@ pandas
 sqlite3    
 datetime 
 random   
+Plotly
+Altair
