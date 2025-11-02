@@ -3,8 +3,9 @@ pillow
 pandas
 openpyxl
 plotly
-
-
+sqlite3
+datetime 
+random
 
 
 
