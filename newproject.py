@@ -1,7 +1,7 @@
-# app_lider_ultimate.py
+# app_lider_ultimate_final.py
 import streamlit as st
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import random
 
@@ -39,7 +39,6 @@ c.execute('''
         aprendizado TEXT
     )
 ''')
-
 c.execute('''
     CREATE TABLE IF NOT EXISTS projetos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +47,6 @@ c.execute('''
         notas TEXT
     )
 ''')
-
 c.execute('''
     CREATE TABLE IF NOT EXISTS desafios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +55,6 @@ c.execute('''
         reflexao TEXT
     )
 ''')
-
 conn.commit()
 
 # -------------------------------
@@ -109,7 +106,10 @@ if choice == "Diário do Líder":
 
     st.subheader("📖 Histórico")
     df_diario = pd.read_sql("SELECT * FROM diario ORDER BY id DESC", conn)
-    st.dataframe(df_diario)
+    if not df_diario.empty:
+        st.dataframe(df_diario)
+    else:
+        st.info("Nenhum diário registrado ainda.")
 
 # -------------------------------
 # Tela: Mini-Projeto 1%
@@ -131,7 +131,9 @@ elif choice == "Mini-Projeto 1%":
     df_projetos = pd.read_sql("SELECT * FROM projetos ORDER BY id DESC", conn)
     if not df_projetos.empty:
         st.bar_chart(df_projetos.set_index('nome')['progresso'])
-    st.dataframe(df_projetos)
+        st.dataframe(df_projetos)
+    else:
+        st.info("Nenhum projeto registrado ainda.")
 
 # -------------------------------
 # Tela: Desafio de Exposição
@@ -151,46 +153,55 @@ elif choice == "Desafio de Exposição":
 
     st.subheader("📊 Desafios")
     df_desafios = pd.read_sql("SELECT * FROM desafios ORDER BY id DESC", conn)
-    st.dataframe(df_desafios)
     if not df_desafios.empty:
         st.bar_chart(df_desafios['status'].value_counts())
+        st.dataframe(df_desafios)
+    else:
+        st.info("Nenhum desafio registrado ainda.")
 
 # -------------------------------
 # Tela: Dashboard Ultimate
 # -------------------------------
 elif choice == "Dashboard":
     st.header("📈 Painel de Evolução")
-    
+
+    # Carregar todos os dados
+    df_diario = pd.read_sql("SELECT * FROM diario ORDER BY id DESC", conn)
+    df_projetos = pd.read_sql("SELECT * FROM projetos ORDER BY id DESC", conn)
+    df_desafios = pd.read_sql("SELECT * FROM desafios ORDER BY id DESC", conn)
+
+    # Pontos totais
     pontos = calcular_pontos()
     st.metric("🏆 Pontos Totais", pontos)
-    
-    # Evolução de diários
-    total_diarios = c.execute("SELECT COUNT(*) FROM diario").fetchone()[0]
-    st.metric("Diários Registrados", total_diarios)
-    
-    # Evolução de projetos
-    df_projetos = pd.read_sql("SELECT * FROM projetos", conn)
+
+    # Métricas
+    st.metric("📖 Diários Registrados", len(df_diario))
     progresso_medio = round(df_projetos["progresso"].mean(), 2) if not df_projetos.empty else 0
-    st.metric("Progresso Médio Projetos (%)", progresso_medio)
-    
-    # Desafios concluídos
-    df_desafios = pd.read_sql("SELECT * FROM desafios", conn)
+    st.metric("💼 Progresso Médio Projetos (%)", progresso_medio)
     concluidos = df_desafios[df_desafios["status"]=="Concluído"].shape[0] if not df_desafios.empty else 0
-    st.metric("Desafios Concluídos", concluidos)
-    
-    # Gráficos interativos
+    st.metric("⚡ Desafios Concluídos", concluidos)
+
+    # Gráficos de evolução
     st.subheader("📊 Gráficos de Evolução")
     if not df_diario.empty:
-        diario_plot = pd.read_sql("SELECT data, id FROM diario", conn)
+        diario_plot = df_diario.copy()
         diario_plot['data'] = pd.to_datetime(diario_plot['data'])
-        st.line_chart(diario_plot.set_index('data')['id'])
-    
+        diario_grouped = diario_plot.groupby('data').count()['id']
+        st.line_chart(diario_grouped)
+    else:
+        st.info("Nenhum diário registrado ainda.")
+
     if not df_projetos.empty:
         st.bar_chart(df_projetos.set_index('nome')['progresso'])
-    
+    else:
+        st.info("Nenhum projeto registrado ainda.")
+
     if not df_desafios.empty:
         st.bar_chart(df_desafios['status'].value_counts())
-    
+    else:
+        st.info("Nenhum desafio registrado ainda.")
+
+    # Próximas ações
     st.markdown("---")
     st.subheader("💡 Próximas Ações")
     st.write("- Registrar o Diário do Líder diariamente")
@@ -200,4 +211,3 @@ elif choice == "Dashboard":
 
 st.sidebar.markdown("---")
 st.sidebar.info("💡 Dica: Cada ação diária vale pontos. Acumule, registre e visualize sua evolução!")
-
