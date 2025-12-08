@@ -11,3 +11,7 @@ sqlalchemy
 pyyaml
 requests
 tabulate
+streamlit
+pandas
+plotly-express
+google-genai
