@@ -15,3 +15,7 @@ streamlit
 pandas
 plotly-express
 google-genai
+streamlit
+requests
+folium
+streamlit-folium
