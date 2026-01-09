@@ -1,189 +1,81 @@
-# app.py
-# Máquina de Evolução Profissional (estilo "Person of Interest")
-# Streamlit + Gemini (hábitos diários) + Desafios + Punições
-
 import streamlit as st
-import datetime as dt
-import json
-import os
-from typing import List, Dict
+import requests
+import folium
+from streamlit_folium import st_folium
+from math import radians, cos, sin, asin, sqrt
 
-# ==============================
-# CONFIGURAÇÃO INICIAL
-# ==============================
-st.set_page_config(page_title="Máquina de Evolução", layout="wide")
+# Configuração da página
+st.set_page_config(page_title="Calculadora de CEP", layout="wide")
 
-st.title("🧠 Máquina de Evolução Profissional")
-st.caption("Disciplina extrema. Progresso diário. Zero desculpas.")
+def haversine(lon1, lat1, lon2, lat2):
+    """Calcula a distância em km entre dois pontos (Haversine)"""
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    dlon = lon2 - lon1 
+    dlat = lat2 - lat1 
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a)) 
+    r = 6371 # Raio da Terra em km
+    return c * r
 
-# ==============================
-# API GEMINI (CONFIGURADA)
-# ==============================
-from google import genai
-from google.genai.types import GenerateContentConfig
+def buscar_cep(cep):
+    url = f"https://viacep.com.br/ws/{cep}/json/"
+    response = requests.get(url)
+    if response.status_code == 200 and "erro" not in response.json():
+        return response.json()
+    return None
 
-with st.sidebar:
-    st.header("🔑 Configuração da IA")
-    gemini_key = st.text_input("Gemini API Key", type="password")
+def buscar_coords(logradouro, localidade, uf):
+    query = f"{logradouro}, {localidade}, {uf}, Brasil"
+    url = f"https://nominatim.openstreetmap.org/search?format=json&q={query}"
+    headers = {'User-Agent': 'MeuAppDeCep/1.0'}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200 and len(response.json()) > 0:
+        res = response.json()[0]
+        return float(res['lat']), float(res['lon'])
+    return None
 
-    if gemini_key:
-        try:
-            client = genai.Client(api_key=gemini_key)
-            st.success("Gemini conectado com sucesso")
-        except Exception as e:
-            st.error("Erro ao conectar no Gemini")
+# Interface Streamlit
+st.title("🚚 App de Logística: Distância entre CEPs")
 
-# ==============================
-# UTILIDADES
-# ==============================
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
-
-HABITS_FILE = os.path.join(DATA_DIR, "habits.json")
-STATE_FILE = os.path.join(DATA_DIR, "state.json")
-
-
-def load_json(path, default):
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return default
-
-
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-state = load_json(STATE_FILE, {
-    "level": 1,
-    "xp": 0,
-    "failures": 0,
-    "last_day": str(dt.date.today())
-})
-
-habits = load_json(HABITS_FILE, [])
-
-# ==============================
-# GEMINI – GERADOR REAL DE HÁBITOS
-# ==============================
-
-def generate_habits_with_gemini(level: int) -> List[Dict]:
-    prompt = f"""
-Você é uma máquina implacável de evolução humana.
-Crie 3 hábitos diários obrigatórios para hoje.
-
-Perfil do usuário:
-- Nível atual: {level}
-- Objetivo: Evolução profissional e pessoal extrema
-- Estilo: Disciplina militar, mentalidade empresarial, execução real
-
-Regras:
-- Hábitos claros, mensuráveis e desconfortáveis
-- Misturar carreira, estudo, execução e corpo/mente
-- Linguagem direta, sem motivação vazia
-
-Responda SOMENTE em JSON no formato:
-[
-  {{"title": "", "description": ""}}
-]
-"""
-
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=GenerateContentConfig(
-            temperature=0.4
-        )
-    )
-
-    try:
-        habits = json.loads(response.text)
-        for i, h in enumerate(habits):
-            h["id"] = i + 1
-            h["done"] = False
-        return habits
-    except Exception:
-        return []
-
-# ==============================
-# PUNIÇÕES (ANTI-FRACASSO)
-# ==============================
-
-def punishment(failures: int) -> str:
-    punishments = [
-        "50 flexões imediatamente",
-        "1 hora extra de estudo profundo",
-        "Relatório escrito de autocrítica",
-        "Acordar 1h mais cedo amanhã",
-        "Treino físico dobrado amanhã"
-    ]
-    return punishments[min(failures, len(punishments)-1)]
-
-# ==============================
-# RESET DIÁRIO
-# ==============================
-
-today = str(dt.date.today())
-if state["last_day"] != today and gemini_key:
-    habits = generate_habits_with_gemini(state["level"])
-    save_json(HABITS_FILE, habits)
-    state["last_day"] = today
-    save_json(STATE_FILE, state)
-
-# ==============================
-# INTERFACE PRINCIPAL
-# ==============================
-
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-    st.metric("Nível", state["level"])
+    cep_origem = st.text_input("CEP Remetente", placeholder="01001000")
 with col2:
-    st.metric("XP", state["xp"])
-with col3:
-    st.metric("Falhas", state["failures"])
+    cep_destino = st.text_input("CEP Destinatário", placeholder="20020010")
 
-st.divider()
-st.subheader("📋 Hábitos do Dia")
+if st.button("Calcular e Mapear"):
+    if cep_origem and cep_destino:
+        with st.spinner('Buscando informações...'):
+            data_origem = buscar_cep(cep_origem)
+            data_destino = buscar_cep(cep_destino)
 
-completed = 0
-for h in habits:
-    checked = st.checkbox(f"**{h['title']}** – {h['description']}", value=h.get("done", False))
-    h["done"] = checked
-    if checked:
-        completed += 1
+            if data_origem and data_destino:
+                coords_origem = buscar_coords(data_origem['logradouro'], data_origem['localidade'], data_origem['uf'])
+                coords_destino = buscar_coords(data_destino['logradouro'], data_destino['localidade'], data_destino['uf'])
 
-save_json(HABITS_FILE, habits)
+                if coords_origem and coords_destino:
+                    distancia = haversine(coords_origem[1], coords_origem[0], coords_destino[1], coords_destino[0])
+                    
+                    # Exibição de Dados
+                    st.success(f"### Distância Estimada: {distancia:.2f} km")
+                    
+                    res1, res2 = st.columns(2)
+                    res1.info(f"**Origem:** {data_origem['logradouro']}, {data_origem['bairro']} - {data_origem['localidade']}/{data_origem['uf']}")
+                    res2.warning(f"**Destino:** {data_destino['logradouro']}, {data_destino['bairro']} - {data_destino['localidade']}/{data_destino['uf']}")
 
-# ==============================
-# AVALIAÇÃO DO DIA
-# ==============================
-
-if st.button("⚖️ Avaliar Dia"):
-    if completed == len(habits) and len(habits) > 0:
-        state["xp"] += 100
-        if state["xp"] >= 500:
-            state["level"] += 1
-            state["xp"] = 0
-        st.success("Execução perfeita. Você subiu de nível.")
+                    # Mapa com Folium
+                    m = folium.Map(location=[(coords_origem[0] + coords_destino[0])/2, 
+                                           (coords_origem[1] + coords_destino[1])/2], zoom_start=5)
+                    
+                    folium.Marker(coords_origem, popup="Origem", icon=folium.Icon(color='blue')).add_to(m)
+                    folium.Marker(coords_destino, popup="Destino", icon=folium.Icon(color='red')).add_to(m)
+                    folium.PolyLine([coords_origem, coords_destino], color="black", weight=2.5, opacity=1).add_to(m)
+                    
+                    st_folium(m, width=1200, height=500)
+                else:
+                    st.error("Não foi possível obter as coordenadas geográficas exatas.")
+            else:
+                st.error("Um ou ambos os CEPs são inválidos.")
     else:
-        state["failures"] += 1
-        p = punishment(state["failures"])
-        st.error(f"Falha detectada. PUNIÇÃO: **{p}**")
-
-    save_json(STATE_FILE, state)
-
-# ==============================
-# FILOSOFIA DA MÁQUINA
-# ==============================
-
-st.divider()
-st.markdown(
-    """
-### 📜 Regra Final
-- Consistência vence talento
-- Dor agora, domínio depois
-- A máquina observa tudo
-"""
-)
+        st.warning("Por favor, preencha os dois CEPs.")
