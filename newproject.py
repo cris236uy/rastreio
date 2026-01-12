@@ -1,95 +1,123 @@
 import streamlit as st
-import requests
-import folium
-from streamlit_folium import st_folium
+import sqlite3
+import pandas as pd
+from datetime import date
+import io
+import re
+from PIL import Image
+import pytesseract
+import platform
 
-# --- CONFIGURAÇÕES E ESTADOS ---
-st.set_page_config(page_title="Validador de Logística", layout="wide")
+# --- CONFIGURAÇÃO AUTOMÁTICA DO TESSERACT ---
+def configurar_tesseract():
+    if platform.system() == "Windows":
+        # Ajuste o caminho abaixo para o seu local de instalação no Windows
+        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    # No Linux (Streamlit Cloud), o comando 'tesseract' já fica no PATH global via packages.txt
 
-if 'resultado' not in st.session_state:
-    st.session_state.resultado = None
+configurar_tesseract()
 
-# --- FUNÇÕES DE API ---
+# --- BANCO DE DADOS ---
+def conectar():
+    return sqlite3.connect('financeiro_diarias.db')
 
-def buscar_dados_cep(cep):
-    """Conecta com a API ViaCEP"""
-    url = f"https://viacep.com.br/ws/{cep}/json/"
+def inicializar_banco():
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS prestadores (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        nome TEXT, documento TEXT UNIQUE, chave_pix TEXT, contato TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS diarias (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, prestador_id INTEGER,
+                        data_servico DATE, valor REAL, status TEXT DEFAULT 'Pendente')''')
+    conn.commit()
+    conn.close()
+
+inicializar_banco()
+
+# --- EXTRAÇÃO DE DADOS (BASEADO NA SUA FOLHA VERO RH) ---
+def extrair_dados_folha(imagem):
     try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            dados = response.json()
-            if "erro" in dados:
-                return None, "CEP não encontrado."
-            return dados, None
-        return None, f"Erro na API ViaCEP: Status {response.status_code}"
-    except Exception as e:
-        return None, f"Falha de conexão: {str(e)}"
+        img = Image.open(imagem)
+        # O lang='por' requer que o tesseract-ocr-por esteja instalado
+        texto = pytesseract.image_to_string(img, lang='por')
+        
+        dados = {"nome": "", "cpf": "", "contato": "", "pix": "", "dia": ""}
 
-def buscar_coordenadas(logradouro, cidade, uf):
-    """Conecta com a API Nominatim (OpenStreetMap)"""
-    # IMPORTANTE: O Header User-Agent é obrigatório para não ser bloqueado
-    headers = {'User-Agent': 'MeuAppLogistica/1.0 (contato@exemplo.com)'}
-    query = f"{logradouro}, {cidade}, {uf}, Brasil"
-    url = f"https://nominatim.openstreetmap.org/search?format=json&q={query}"
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        dados = response.json()
-        if response.status_code == 200 and len(dados) > 0:
-            return (float(dados[0]['lat']), float(dados[0]['lon'])), None
-        return None, "Coordenadas não encontradas para este endereço."
+        # Nome: Pega o que está escrito após 'Nome:'
+        nome_search = re.search(r"Nome:\s*([A-Za-z\s]+)", texto, re.I)
+        if nome_search: dados["nome"] = nome_search.group(1).strip()
+
+        # CPF: 11 dígitos
+        cpf_search = re.search(r"(\d{3}\.?\d{3}\.?\d{3}-?\d{2})", texto)
+        if cpf_search: dados["cpf"] = cpf_search.group(1)
+
+        # Contato: Telefone com DDD
+        contato_search = re.search(r"(\(?\d{2}\)?\s?\d{4,5}-?\d{4})", texto)
+        if contato_search: dados["contato"] = contato_search.group(1)
+
+        # Pix: Pega e-mail ou sequência após 'PIX'
+        pix_search = re.search(r"PIX:\s*([^\s\n]+)", texto, re.I)
+        if pix_search: dados["pix"] = pix_search.group(1).strip()
+
+        # Dia: Busca número da linha com horário (ex: 15:00 na linha 09)
+        dia_search = re.search(r"(\d{2})\s+\d{2}[:\.]\d{2}", texto)
+        if dia_search: dados["dia"] = dia_search.group(1)
+
+        return dados, texto
     except Exception as e:
-        return None, f"Erro no Mapa: {str(e)}"
+        return None, f"Erro no motor OCR: {str(e)}"
 
 # --- INTERFACE ---
-st.title("📍 Localizador e Medidor de CEPs")
+st.set_page_config(page_title="Vero RH - Automação", layout="wide")
+st.title("📄 Processador de Diárias Inteligente")
 
-col1, col2 = st.columns(2)
-with col1:
-    cep_origem = st.text_input("CEP Origem", placeholder="Ex: 01001000")
-with col2:
-    cep_destino = st.text_input("CEP Destino", placeholder="Ex: 20020010")
+menu = st.sidebar.radio("Navegação", ["Processar Nova Folha", "Gestão de Pagamentos"])
 
-if st.button("Consultar APIs e Gerar Mapa"):
-    with st.spinner('Consultando APIs...'):
-        # 1. Busca dados do Remetente
-        dados_o, erro_o = buscar_dados_cep(cep_origem)
-        # 2. Busca dados do Destinatário
-        dados_d, erro_d = buscar_dados_cep(cep_destino)
+if menu == "Processar Nova Folha":
+    upload = st.file_uploader("Suba a foto da folha de presença", type=['jpg', 'png', 'jpeg'])
 
-        if dados_o and dados_d:
-            # 3. Busca Coordenadas (Se houver endereço)
-            coord_o, err_co = buscar_coordenadas(dados_o['logradouro'], dados_o['localidade'], dados_o['uf'])
-            coord_d, err_cd = buscar_coordenadas(dados_d['logradouro'], dados_d['localidade'], dados_d['uf'])
+    if upload:
+        dados, texto_bruto = extrair_dados_folha(upload)
+        
+        if dados:
+            st.success("Leitura concluída! Verifique os campos abaixo:")
+            with st.form("confirmacao_dados"):
+                c1, c2 = st.columns(2)
+                nome_f = c1.text_input("Nome", value=dados['nome'])
+                cpf_f = c2.text_input("CPF", value=dados['cpf'])
+                pix_f = c1.text_input("Chave PIX", value=dados['pix'])
+                dia_f = c2.text_input("Dia do Mês", value=dados['dia'])
+                valor_f = st.number_input("Valor Diária (R$)", value=150.0)
 
-            if coord_o and coord_d:
-                # Salva tudo no estado da sessão para não sumir
-                st.session_state.resultado = {
-                    "origem": dados_o,
-                    "destino": dados_d,
-                    "coords": [coord_o, coord_d]
-                }
-            else:
-                st.error(f"Erro de Geolocalização: {err_co or err_cd}")
+                if st.form_submit_button("Salvar Diária"):
+                    conn = conectar()
+                    cursor = conn.cursor()
+                    # Garante que o prestador existe
+                    cursor.execute("INSERT OR IGNORE INTO prestadores (nome, documento, chave_pix) VALUES (?,?,?)", 
+                                   (nome_f, cpf_f, pix_f))
+                    cursor.execute("SELECT id FROM prestadores WHERE documento = ?", (cpf_f,))
+                    p_id = cursor.fetchone()[0]
+                    
+                    # Salva diária
+                    data_diaria = date(date.today().year, date.today().month, int(dia_f) if dia_f else 1)
+                    cursor.execute("INSERT INTO diarias (prestador_id, data_servico, valor) VALUES (?,?,?)", 
+                                   (p_id, data_diaria, valor_f))
+                    conn.commit()
+                    conn.close()
+                    st.success("Diária registrada com sucesso!")
         else:
-            st.error(f"Erro nos CEPs: {erro_o or erro_d}")
+            st.error(texto_bruto)
 
-# --- EXIBIÇÃO DOS RESULTADOS (Persistente) ---
-if st.session_state.resultado:
-    res = st.session_state.resultado
+elif menu == "Gestão de Pagamentos":
+    conn = conectar()
+    df = pd.read_sql_query('''SELECT d.id, p.nome, d.data_servico as Data, d.valor as R$, d.status 
+                              FROM diarias d JOIN prestadores p ON d.prestador_id = p.id''', conn)
+    conn.close()
+    st.dataframe(df, use_container_width=True)
     
-    st.markdown("---")
-    c1, c2 = st.columns(2)
-    
-    with c1:
-        st.info(f"**REMETENTE**\n\n{res['origem']['logradouro']}\n\n{res['origem']['localidade']} - {res['origem']['uf']}")
-    with c2:
-        st.warning(f"**DESTINATÁRIO**\n\n{res['destino']['logradouro']}\n\n{res['destino']['localidade']} - {res['destino']['uf']}")
-
-    # Gerar Mapa
-    m = folium.Map(location=res['coords'][0], zoom_start=5)
-    folium.Marker(res['coords'][0], tooltip="Origem", icon=folium.Icon(color='blue')).add_to(m)
-    folium.Marker(res['coords'][1], tooltip="Destino", icon=folium.Icon(color='red')).add_to(m)
-    folium.PolyLine(res['coords'], color="black", weight=2, opacity=0.8).add_to(m)
-    
-    st_folium(m, width="100%", height=400)
+    # Botão para Exportar Excel
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False)
+    st.download_button("📥 Baixar Relatório Excel", buffer, "relatorio.xlsx")
