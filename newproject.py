@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import date, timedelta
 import base64
 import io
-from PIL import Image
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Vero RH - Gestão de Diárias", layout="wide", page_icon="🔴")
@@ -20,7 +19,7 @@ def init_db():
     # Tabela de Empresas
     conn.execute('''CREATE TABLE IF NOT EXISTS empresas 
                     (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE)''')
-    # Tabela de Prestadores
+    # Tabela de Colaboradores
     conn.execute('''CREATE TABLE IF NOT EXISTS prestadores 
                     (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, documento TEXT UNIQUE, empresa_id INTEGER,
                     FOREIGN KEY (empresa_id) REFERENCES empresas (id))''')
@@ -33,7 +32,7 @@ def init_db():
 
 init_db()
 
-# --- DESIGN VERO RH (CSS Customizado) ---
+# --- DESIGN VERO RH (CSS) ---
 st.markdown("""
     <style>
         .stApp { background-color: #0e1117; color: #ffffff; }
@@ -55,18 +54,22 @@ st.markdown("""
 with st.sidebar:
     st.markdown('<div style="margin-bottom: 20px;"><span class="logo-vero">vero</span><span class="logo-rh">RH</span></div>', unsafe_allow_html=True)
     st.divider()
-    perfil = st.selectbox("Selecione seu Acesso", ["Vero Master", "RH Parceiro", "Financeiro"])
-    senha = st.text_input("Senha de Acesso", type="password")
-    acesso_liberado = (senha == "vero123")
+    perfil = st.selectbox("Selecione seu Acesso", ["Vero Master", "RH Parceiro", "Colaborador", "Financeiro"])
+    
+    if perfil == "Colaborador":
+        usuario_doc = st.text_input("Digite seu CPF (apenas números)")
+        acesso_liberado = (len(usuario_doc) > 0)
+    else:
+        senha = st.text_input("Senha de Acesso", type="password")
+        acesso_liberado = (senha == "vero123")
 
 # --- CONTEÚDO PRINCIPAL ---
 if not acesso_liberado:
-    st.warning("Por favor, insira a senha na barra lateral para acessar o sistema.")
+    st.warning("Por favor, realize o login na barra lateral.")
 else:
-    # --- 1. VERO MASTER (Gestão de Empresas) ---
+    # --- 1. VERO MASTER ---
     if perfil == "Vero Master":
-        st.title("🏗️ Gestão de Empresas Parceiras")
-        
+        st.title("🏗️ Master - Gestão de Empresas")
         with st.container():
             st.markdown('<div class="card">', unsafe_allow_html=True)
             nome_empresa = st.text_input("Nome da Nova Empresa Cliente")
@@ -77,93 +80,100 @@ else:
                         conn.execute("INSERT INTO empresas (nome) VALUES (?)", (nome_empresa,))
                         conn.commit()
                         st.success(f"Empresa '{nome_empresa}' cadastrada!")
-                    except:
-                        st.error("Erro: Esta empresa já existe ou houve um problema no banco.")
-                    finally:
-                        conn.close()
+                    except: st.error("Empresa já existe.")
+                    finally: conn.close()
             st.markdown('</div>', unsafe_allow_html=True)
-
-        st.subheader("Empresas Ativas")
+        
         df_e = pd.read_sql("SELECT * FROM empresas", get_db_connection())
         st.dataframe(df_e, use_container_width=True, hide_index=True)
 
-    # --- 2. RH PARCEIRO (Cadastrar Funcionario e Diaria) ---
+    # --- 2. RH PARCEIRO ---
     elif perfil == "RH Parceiro":
-        st.title("📋 Painel de Lançamentos")
-        
+        st.title("📋 Painel do RH")
         conn = get_db_connection()
         empresas = pd.read_sql("SELECT * FROM empresas", conn)
         
         if empresas.empty:
-            st.error("Nenhuma empresa cadastrada pelo Master.")
+            st.error("Nenhuma empresa cadastrada.")
         else:
             emp_opcoes = {row['nome']: row['id'] for _, row in empresas.iterrows()}
-            emp_sel_nome = st.selectbox("Sua Empresa", list(emp_opcoes.keys()))
+            emp_sel_nome = st.selectbox("Selecione a Empresa", list(emp_opcoes.keys()))
             emp_id = emp_opcoes[emp_sel_nome]
 
-            tab1, tab2 = st.tabs(["👥 Funcionários", "📅 Lançar Diárias"])
+            t1, t2 = st.tabs(["👥 Cadastrar Colaborador", "📅 Lançar Intervalo de Diárias"])
 
-            with tab1:
+            with t1:
                 st.markdown('<div class="card">', unsafe_allow_html=True)
-                with st.form("form_func"):
-                    nome_f = st.text_input("Nome Completo do Colaborador")
-                    doc_f = st.text_input("CPF / Documento")
-                    if st.form_submit_button("Cadastrar Colaborador"):
+                with st.form("f_colab"):
+                    n_f = st.text_input("Nome do Colaborador")
+                    d_f = st.text_input("CPF (será o login)")
+                    if st.form_submit_button("Salvar"):
                         try:
-                            conn.execute("INSERT INTO prestadores (nome, documento, empresa_id) VALUES (?,?,?)", 
-                                         (nome_f, doc_f, emp_id))
+                            conn.execute("INSERT INTO prestadores (nome, documento, empresa_id) VALUES (?,?,?)", (n_f, d_f, emp_id))
                             conn.commit()
-                            st.success("Colaborador cadastrado!")
-                        except: st.error("Erro ao cadastrar.")
+                            st.success("Cadastrado!")
+                        except: st.error("CPF já existe.")
                 st.markdown('</div>', unsafe_allow_html=True)
 
-            with tab2:
+            with t2:
                 prestadores = pd.read_sql(f"SELECT * FROM prestadores WHERE empresa_id = {emp_id}", conn)
-                if prestadores.empty:
-                    st.info("Cadastre um funcionário primeiro.")
-                else:
+                if not prestadores.empty:
                     st.markdown('<div class="card">', unsafe_allow_html=True)
-                    p_opcoes = {row['nome']: row['id'] for _, row in prestadores.iterrows()}
-                    p_sel = st.selectbox("Selecione o Funcionário", list(p_opcoes.keys()))
-                    data_diaria = st.date_input("Data da Folha de Ponto", date.today())
-                    foto = st.file_uploader("Upload da Foto da Folha", type=['jpg', 'jpeg', 'png'])
+                    p_dict = {row['nome']: row['id'] for _, row in prestadores.iterrows()}
+                    p_sel = st.selectbox("Funcionário", list(p_dict.keys()))
                     
-                    if st.button("Salvar Diária"):
-                        if foto:
+                    col_data1, col_data2 = st.columns(2)
+                    data_inicio = col_data1.date_input("Data de Início", date.today())
+                    data_fim = col_data2.date_input("Data de Fim", date.today())
+                    
+                    foto = st.file_uploader("Foto da Folha de Ponto", type=['jpg', 'jpeg', 'png'])
+                    
+                    if st.button("Lançar Período Completo"):
+                        if foto and data_fim >= data_inicio:
                             img_b64 = base64.b64encode(foto.read()).decode()
-                            conn.execute("INSERT INTO diarias (prestador_id, data, valor, foto_url) VALUES (?,?,?,?)",
-                                         (p_opcoes[p_sel], str(data_diaria), 150.0, img_b64))
+                            # Loop para inserir cada dia do intervalo
+                            atual = data_inicio
+                            dias_cont = 0
+                            while atual <= data_fim:
+                                conn.execute("INSERT INTO diarias (prestador_id, data, valor, foto_url) VALUES (?,?,?,?)",
+                                             (p_dict[p_sel], str(atual), 150.0, img_b64))
+                                atual += timedelta(days=1)
+                                dias_cont += 1
                             conn.commit()
-                            st.success("Diária e comprovante salvos com sucesso!")
+                            st.success(f"Sucesso! {dias_cont} diárias lançadas para {p_sel}.")
                         else:
-                            st.error("A foto do comprovante é obrigatória.")
+                            st.error("Verifique as datas e a foto.")
                     st.markdown('</div>', unsafe_allow_html=True)
         conn.close()
 
-    # --- 3. FINANCEIRO (Auditoria e Visualização) ---
-    elif perfil == "Financeiro":
-        st.title("💰 Auditoria e Pagamentos")
+    # --- 3. COLABORADOR ---
+    elif perfil == "Colaborador":
+        st.title("👤 Meu Extrato")
+        conn = get_db_connection()
+        colab = conn.execute("SELECT * FROM prestadores WHERE documento = ?", (usuario_doc,)).fetchone()
         
+        if colab:
+            st.info(f"Bem-vindo, {colab['nome']}!")
+            query = f"""
+                SELECT data, valor FROM diarias 
+                WHERE prestador_id = {colab['id']} 
+                ORDER BY data DESC
+            """
+            df_colab = pd.read_sql(query, conn)
+            if not df_colab.empty:
+                st.metric("Total de Diárias", len(df_colab))
+                st.dataframe(df_colab, use_container_width=True)
+            else:
+                st.write("Nenhuma diária encontrada.")
+        else:
+            st.error("Colaborador não encontrado com este CPF.")
+        conn.close()
+
+    # --- 4. FINANCEIRO ---
+    elif perfil == "Financeiro":
+        st.title("💰 Financeiro")
         query = """
             SELECT d.id, e.nome as Empresa, p.nome as Colaborador, d.data, d.valor, d.foto_url
             FROM diarias d
             JOIN prestadores p ON d.prestador_id = p.id
-            JOIN empresas e ON p.empresa_id = e.id
-        """
-        df_fin = pd.read_sql(query, get_db_connection())
-        
-        if df_fin.empty:
-            st.info("Nenhum dado lançado no sistema ainda.")
-        else:
-            st.dataframe(df_fin[['id', 'Empresa', 'Colaborador', 'data', 'valor']], use_container_width=True)
-            
-            st.divider()
-            st.subheader("Visualizar Comprovante")
-            id_busca = st.number_input("Digite o ID da diária para ver a foto", min_value=1, step=1)
-            
-            if st.button("Visualizar Foto"):
-                try:
-                    foto_b64 = df_fin[df_fin['id'] == id_busca]['foto_url'].values[0]
-                    st.image(io.BytesIO(base64.b64decode(foto_b64)), caption=f"ID: {id_busca}")
-                except:
-                    st.error("ID não encontrado ou sem imagem.")
+            JOIN empresas e ON p.empresa_id =
